@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
+import BookingCalendar from './BookingCalendar'
 
 export default async function ListingPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -43,10 +44,11 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
         <p className="text-gray-700 mb-6">{listing.description}</p>
       )}
 
-      <div className="border rounded-lg p-4 mb-6">
-        <p className="text-xl font-semibold">£{listing.price_per_night} / night</p>
-        <p className="text-sm text-gray-500">+£{listing.cleaning_fee} cleaning fee</p>
-      </div>
+      <BookingCalendar
+        pricePerNight={listing.price_per_night}
+        cleaningFee={listing.cleaning_fee}
+        blockedDates={listing.blocked_dates || []}
+      />
 
       <button className="bg-blue-700 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-800">
         Book this stay
