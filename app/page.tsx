@@ -5,7 +5,7 @@ export default async function HomePage() {
   const supabase = await createClient()
   const { data: listings, error } = await supabase
     .from('listings')
-    .select('id, title, listing_type, address_line, postcode, price_per_night, cleaning_fee, photos')
+    .select('id, title, listing_type, address_line, postcode, price_per_night, cleaning_fee, photos, hosts(name)')
     .eq('active', true)
     .order('price_per_night', { ascending: true })
 
@@ -21,7 +21,7 @@ export default async function HomePage() {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-        {listings?.map((listing) => (
+        {listings?.map((listing: any) => (
           <Link
             key={listing.id}
             href={`/listing/${listing.id}`}
@@ -39,7 +39,19 @@ export default async function HomePage() {
                 {listing.listing_type}
               </div>
               <h2 className="font-semibold">{listing.title}</h2>
-              <p className="text-sm text-gray-500">{listing.postcode}</p>
+
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                {listing.hosts?.name && (
+                  <span className="text-sm text-gray-600">Hosted by {listing.hosts.name}</span>
+                )}
+                {listing.hosts?.name !== 'Lucho' && (
+                  <span className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">
+                    🏅 SuperHost
+                  </span>
+                )}
+              </div>
+
+              <p className="text-sm text-gray-500 mt-1">{listing.postcode}</p>
               <p className="mt-2 font-medium">
                 £{listing.price_per_night} <span className="text-gray-500 text-sm">/ night</span>
               </p>
