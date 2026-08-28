@@ -59,9 +59,8 @@ export default function BookingCalendar({ pricePerNight, cleaningFee, blockedDat
   }
 
   function isInRange(iso: string) {
-    if (!checkIn) return false
-    const end = checkOut ?? checkIn
-    return iso >= checkIn && iso <= end
+    if (!checkIn || !checkOut) return false
+    return iso > checkIn && iso < checkOut
   }
 
   const rangeHasBlockedDate = useMemo(() => {
@@ -111,22 +110,33 @@ export default function BookingCalendar({ pricePerNight, cleaningFee, blockedDat
                   const isStart = iso === checkIn
                   const isEnd = iso === checkOut
                   const inRange = isInRange(iso)
+
+                  let style: React.CSSProperties | undefined
+                  let className =
+                    'text-xs rounded p-1.5 font-medium '
+
+                  if (blocked) {
+                    className += 'bg-gray-100 text-gray-300 cursor-not-allowed line-through'
+                  } else if (isStart) {
+                    style = { background: 'linear-gradient(to right, white 50%, #1d4ed8 50%)' }
+                    className += 'text-gray-900'
+                  } else if (isEnd) {
+                    style = { background: 'linear-gradient(to left, white 50%, #1d4ed8 50%)' }
+                    className += 'text-gray-900'
+                  } else if (inRange) {
+                    className += 'bg-blue-100 text-blue-800'
+                  } else {
+                    className += 'bg-green-50 text-green-800 hover:bg-green-100'
+                  }
+
                   return (
                     <button
                       key={iso}
                       type="button"
                       disabled={blocked}
                       onClick={() => handleDayClick(iso)}
-                      className={
-                        'text-xs rounded p-1.5 ' +
-                        (blocked
-                          ? 'bg-gray-100 text-gray-300 cursor-not-allowed line-through'
-                          : isStart || isEnd
-                          ? 'bg-blue-700 text-white'
-                          : inRange
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-green-50 text-green-800 hover:bg-green-100')
-                      }
+                      style={style}
+                      className={className}
                     >
                       {d.getDate()}
                     </button>
@@ -147,7 +157,7 @@ export default function BookingCalendar({ pricePerNight, cleaningFee, blockedDat
           Check-in: <span className="font-medium">{checkIn ?? '—'}</span>
         </span>
         <span>
-          Check-out: <span className="font-medium">{checkOut ?? '—'}</span>
+          Check-out: <span className="font-medium">{checkOut ?? '—'}</span> <span className="text-xs text-gray-400">(by 10:30am)</span>
         </span>
         {(checkIn || checkOut) && (
           <button type="button" onClick={resetSelection} className="text-xs text-blue-700 underline">
