@@ -8,11 +8,17 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
 
   const { data: listing } = await supabase
     .from('listings')
-    .select('*, hosts(name)')
+    .select('*')
     .eq('id', id)
     .single()
 
   if (!listing) return notFound()
+
+  const { data: host } = await supabase
+    .from('host_names')
+    .select('name')
+    .eq('id', listing.host_id)
+    .single()
 
   const streetOnly = listing.address_line?.replace(/^\d+\s*/, '') ?? listing.address_line
 
@@ -42,10 +48,10 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
       <h1 className="text-2xl font-bold">{listing.title}</h1>
       <p className="text-gray-500 mb-1">{streetOnly}, {listing.postcode}</p>
 
-      {listing.hosts?.name && (
+      {host?.name && (
         <div className="flex items-center gap-2 mb-4">
-          <span className="text-sm text-gray-600">Hosted by {listing.hosts.name}</span>
-          {listing.hosts.name !== 'Lucho' && (
+          <span className="text-sm text-gray-600">Hosted by {host.name}</span>
+          {host.name !== 'Lucho' && (
             <span className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">
               🏅 SuperHost
             </span>
