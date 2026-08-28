@@ -8,7 +8,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
 
   const { data: listing } = await supabase
     .from('listings')
-    .select('*')
+    .select('*, hosts(name)')
     .eq('id', id)
     .single()
 
@@ -40,7 +40,18 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
         {listing.listing_type}
       </div>
       <h1 className="text-2xl font-bold">{listing.title}</h1>
-      <p className="text-gray-500 mb-4">{streetOnly}, {listing.postcode}</p>
+      <p className="text-gray-500 mb-1">{streetOnly}, {listing.postcode}</p>
+
+      {listing.hosts?.name && (
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-sm text-gray-600">Hosted by {listing.hosts.name}</span>
+          {listing.hosts.name !== 'Lucho' && (
+            <span className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">
+              🏅 SuperHost
+            </span>
+          )}
+        </div>
+      )}
 
       {listing.description && (
         <p className="text-gray-700 mb-6">{listing.description}</p>
