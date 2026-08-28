@@ -27,7 +27,10 @@ export default function BookingCalendar({ pricePerNight, cleaningFee, blockedDat
   }, [])
 
   function toISO(d: Date) {
-    return d.toISOString().split('T')[0]
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
   }
 
   function isBlocked(d: Date) {
@@ -112,8 +115,7 @@ export default function BookingCalendar({ pricePerNight, cleaningFee, blockedDat
                   const inRange = isInRange(iso)
 
                   let style: React.CSSProperties | undefined
-                  let className =
-                    'text-xs rounded p-1.5 font-medium '
+                  let className = 'text-xs rounded p-1.5 font-medium '
 
                   if (blocked) {
                     className += 'bg-gray-100 text-gray-300 cursor-not-allowed line-through'
@@ -157,7 +159,8 @@ export default function BookingCalendar({ pricePerNight, cleaningFee, blockedDat
           Check-in: <span className="font-medium">{checkIn ?? '—'}</span>
         </span>
         <span>
-          Check-out: <span className="font-medium">{checkOut ?? '—'}</span> <span className="text-xs text-gray-400">(by 10:30am)</span>
+          Check-out: <span className="font-medium">{checkOut ?? '—'}</span>{' '}
+          <span className="text-xs text-gray-400">(by 10:30am)</span>
         </span>
         {(checkIn || checkOut) && (
           <button type="button" onClick={resetSelection} className="text-xs text-blue-700 underline">
