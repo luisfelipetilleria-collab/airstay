@@ -5,7 +5,7 @@ export default async function HomePage() {
   const supabase = await createClient()
   const { data: listings, error } = await supabase
     .from('listings')
-    .select('id, title, listing_type, address_line, postcode, price_per_night, cleaning_fee')
+    .select('id, title, listing_type, address_line, postcode, price_per_night, cleaning_fee, photos')
     .eq('active', true)
     .order('price_per_night', { ascending: true })
 
@@ -25,17 +25,26 @@ export default async function HomePage() {
           <Link
             key={listing.id}
             href={`/listing/${listing.id}`}
-            className="border rounded-lg p-4 hover:shadow-md transition"
+            className="border rounded-lg overflow-hidden hover:shadow-md transition"
           >
-            <div className="text-xs uppercase text-blue-700 font-semibold mb-1">
-              {listing.listing_type}
+            {listing.photos?.[0] && (
+              <img
+                src={listing.photos[0]}
+                alt={listing.title}
+                className="w-full h-40 object-cover"
+              />
+            )}
+            <div className="p-4">
+              <div className="text-xs uppercase text-blue-700 font-semibold mb-1">
+                {listing.listing_type}
+              </div>
+              <h2 className="font-semibold">{listing.title}</h2>
+              <p className="text-sm text-gray-500">{listing.postcode}</p>
+              <p className="mt-2 font-medium">
+                £{listing.price_per_night} <span className="text-gray-500 text-sm">/ night</span>
+              </p>
+              <p className="text-xs text-gray-400">+£{listing.cleaning_fee} cleaning fee</p>
             </div>
-            <h2 className="font-semibold">{listing.title}</h2>
-            <p className="text-sm text-gray-500">{listing.postcode}</p>
-            <p className="mt-2 font-medium">
-              £{listing.price_per_night} <span className="text-gray-500 text-sm">/ night</span>
-            </p>
-            <p className="text-xs text-gray-400">+£{listing.cleaning_fee} cleaning fee</p>
           </Link>
         ))}
       </div>
