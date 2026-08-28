@@ -14,6 +14,8 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
 
   if (!listing) return notFound()
 
+  const streetOnly = listing.address_line?.replace(/^\d+\s*/, '') ?? listing.address_line
+
   return (
     <div className="max-w-3xl mx-auto px-6 py-10">
       {listing.photos && listing.photos.length > 0 && (
@@ -38,7 +40,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
         {listing.listing_type}
       </div>
       <h1 className="text-2xl font-bold">{listing.title}</h1>
-      <p className="text-gray-500 mb-4">{listing.address_line}, {listing.postcode}</p>
+      <p className="text-gray-500 mb-4">{streetOnly}, {listing.postcode}</p>
 
       {listing.description && (
         <p className="text-gray-700 mb-6">{listing.description}</p>
@@ -53,6 +55,10 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
       <button className="bg-blue-700 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-800">
         Book this stay
       </button>
+
+      <p className="text-xs text-gray-400 mt-4">
+        The full address, check-in details, and access codes will be shared once your booking is confirmed.
+      </p>
     </div>
   )
 }
