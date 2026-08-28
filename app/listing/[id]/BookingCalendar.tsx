@@ -10,7 +10,7 @@ interface Props {
 
 export default function BookingCalendar({ pricePerNight, cleaningFee, blockedDates }: Props) {
   const [checkIn, setCheckIn] = useState<string | null>(null)
-  const [nights, setNights] = useState(1)
+  const [checkOut, setCheckOut] = useState<string | null>(null)
 
   const blockedSet = useMemo(() => new Set(blockedDates || []), [blockedDates])
 
@@ -44,21 +44,54 @@ export default function BookingCalendar({ pricePerNight, cleaningFee, blockedDat
     return Array.from(map.entries())
   }, [days])
 
-  const rangeHasBlockedDate = useMemo(() => {
+  function handleDayClick(iso: string) {
+    if (!checkIn || (checkIn && checkOut)) {
+      setCheckIn(iso)
+      setCheckOut(null)
+      return
+    }
+    if (iso <= checkIn) {
+      setCheckIn(iso)
+      setCheckOut(null)
+      return
+    }
+    setCheckOut(iso)
+  }
+
+  function isInRange(iso: string) {
     if (!checkIn) return false
+    const end = checkOut ?? checkIn
+    return iso >= checkIn && iso <= end
+  }
+
+  const rangeHasBlockedDate = useMemo(() => {
+    if (!checkIn || !checkOut) return false
     const start = new Date(checkIn)
-    for (let i = 0; i < nights; i++) {
-      const d = new Date(start)
-      d.setDate(start.getDate() + i)
+    const end = new Date(checkOut)
+    const d = new Date(start)
+    while (d < end) {
       if (blockedSet.has(toISO(d))) return true
+      d.setDate(d.getDate() + 1)
     }
     return false
-  }, [checkIn, nights, blockedSet])
+  }, [checkIn, checkOut, blockedSet])
+
+  const nights = useMemo(() => {
+    if (!checkIn || !checkOut) return 0
+    const start = new Date(checkIn)
+    const end = new Date(checkOut)
+    return Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+  }, [checkIn, checkOut])
 
   const nightsTotal = pricePerNight * nights
   const subtotal = nightsTotal + cleaningFee
   const platformFee = subtotal * 0.05
   const total = subtotal + platformFee
+
+  function resetSelection() {
+    setCheckIn(null)
+    setCheckOut(null)
+  }
 
   return (
     <div className="border rounded-lg p-4 mb-6">
@@ -75,19 +108,23 @@ export default function BookingCalendar({ pricePerNight, cleaningFee, blockedDat
                 {monthDays.map((d) => {
                   const iso = toISO(d)
                   const blocked = isBlocked(d)
-                  const selected = checkIn === iso
+                  const isStart = iso === checkIn
+                  const isEnd = iso === checkOut
+                  const inRange = isInRange(iso)
                   return (
                     <button
                       key={iso}
                       type="button"
                       disabled={blocked}
-                      onClick={() => setCheckIn(iso)}
+                      onClick={() => handleDayClick(iso)}
                       className={
                         'text-xs rounded p-1.5 ' +
                         (blocked
                           ? 'bg-gray-100 text-gray-300 cursor-not-allowed line-through'
-                          : selected
+                          : isStart || isEnd
                           ? 'bg-blue-700 text-white'
+                          : inRange
+                          ? 'bg-blue-100 text-blue-800'
                           : 'bg-green-50 text-green-800 hover:bg-green-100')
                       }
                     >
@@ -102,34 +139,30 @@ export default function BookingCalendar({ pricePerNight, cleaningFee, blockedDat
       </div>
 
       <p className="text-xs text-gray-500 mb-4">
-        Green = available, grey/crossed-out = unavailable. Click a date to select check-in.
+        Green = available. Click a date for check-in, then click another date for check-out.
       </p>
 
-      <div className="mb-4 text-sm text-gray-700">
-        Check-in date: <span className="font-medium">{checkIn ?? 'Select a date above'}</span>
+      <div className="mb-4 text-sm text-gray-700 flex items-center gap-4 flex-wrap">
+        <span>
+          Check-in: <span className="font-medium">{checkIn ?? '—'}</span>
+        </span>
+        <span>
+          Check-out: <span className="font-medium">{checkOut ?? '—'}</span>
+        </span>
+        {(checkIn || checkOut) && (
+          <button type="button" onClick={resetSelection} className="text-xs text-blue-700 underline">
+            Clear selection
+          </button>
+        )}
       </div>
 
-      <div className="flex items-center gap-3 mb-4">
-        <label htmlFor="nights" className="text-sm text-gray-600">
-          Number of nights
-        </label>
-        <input
-          id="nights"
-          type="number"
-          min={1}
-          value={nights}
-          onChange={(e) => setNights(Math.max(1, parseInt(e.target.value) || 1))}
-          className="border rounded px-2 py-1 w-20"
-        />
-      </div>
-
-      {checkIn && rangeHasBlockedDate && (
+      {checkIn && checkOut && rangeHasBlockedDate && (
         <p className="text-red-600 text-sm mb-4">
           One or more nights in this range aren&apos;t available. Please choose different dates.
         </p>
       )}
 
-      {checkIn && !rangeHasBlockedDate && (
+      {checkIn && checkOut && !rangeHasBlockedDate && nights > 0 && (
         <div className="bg-gray-50 rounded-lg p-4 text-sm space-y-1">
           <div className="flex justify-between">
             <span>
