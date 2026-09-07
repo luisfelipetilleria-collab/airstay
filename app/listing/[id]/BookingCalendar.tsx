@@ -1,16 +1,26 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { computePricing, nightsBetween } from '@/lib/pricing'
 
 interface Props {
+  listingId: string
   pricePerNight: number
   cleaningFee: number
   blockedDates: string[]
 }
 
-export default function BookingCalendar({ pricePerNight, cleaningFee, blockedDates }: Props) {
+type Step = 'pick-dates' | 'details' | 'redirecting'
+
+export default function BookingCalendar({ listingId, pricePerNight, cleaningFee, blockedDates }: Props) {
   const [checkIn, setCheckIn] = useState<string | null>(null)
   const [checkOut, setCheckOut] = useState<string | null>(null)
+  const [step, setStep] = useState<Step>('pick-dates')
+  const [guestName, setGuestName] = useState('')
+  const [guestEmail, setGuestEmail] = useState('')
+  const [guestPhone, setGuestPhone] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [payingWith, setPayingWith] = useState<'stripe' | 'paypal' | null>(null)
 
   const blockedSet = useMemo(() => new Set(blockedDates || []), [blockedDates])
 
@@ -48,9 +58,11 @@ export default function BookingCalendar({ pricePerNight, cleaningFee, blockedDat
   }, [days])
 
   function handleDayClick(iso: string) {
+    setError(null)
     if (!checkIn || (checkIn && checkOut)) {
       setCheckIn(iso)
       setCheckOut(null)
+      setStep('pick-dates')
       return
     }
     if (iso <= checkIn) {
@@ -78,21 +90,64 @@ export default function BookingCalendar({ pricePerNight, cleaningFee, blockedDat
     return false
   }, [checkIn, checkOut, blockedSet])
 
-  const nights = useMemo(() => {
-    if (!checkIn || !checkOut) return 0
-    const start = new Date(checkIn)
-    const end = new Date(checkOut)
-    return Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
-  }, [checkIn, checkOut])
-
-  const nightsTotal = pricePerNight * nights
-  const subtotal = nightsTotal + cleaningFee
-  const platformFee = subtotal * 0.05
-  const total = subtotal + platformFee
+  const nights = checkIn && checkOut ? nightsBetween(checkIn, checkOut) : 0
+  const pricing = nights > 0 ? computePricing(pricePerNight, cleaningFee, nights) : null
+  const canBook = Boolean(checkIn && checkOut && !rangeHasBlockedDate && nights > 0)
 
   function resetSelection() {
     setCheckIn(null)
     setCheckOut(null)
+    setStep('pick-dates')
+    setError(null)
+  }
+
+  async function startCheckout(method: 'stripe' | 'paypal') {
+    setError(null)
+
+    if (!guestName.trim() || !guestEmail.trim()) {
+      setError('Please enter your name and email.')
+      return
+    }
+    if (!checkIn || !checkOut) return
+
+    setPayingWith(method)
+    setStep('redirecting')
+
+    try {
+      const bookingRes = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          listingId,
+          checkIn,
+          checkOut,
+          guestName: guestName.trim(),
+          guestEmail: guestEmail.trim(),
+          guestPhone: guestPhone.trim() || null,
+        }),
+      })
+      const bookingData = await bookingRes.json()
+      if (!bookingRes.ok) {
+        throw new Error(bookingData.error || 'Could not start booking.')
+      }
+
+      const checkoutPath = method === 'stripe' ? '/api/checkout/stripe' : '/api/checkout/paypal/create-order'
+      const checkoutRes = await fetch(checkoutPath, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: bookingData.bookingId }),
+      })
+      const checkoutData = await checkoutRes.json()
+      if (!checkoutRes.ok || !checkoutData.url) {
+        throw new Error(checkoutData.error || 'Could not start payment.')
+      }
+
+      window.location.href = checkoutData.url
+    } catch (err: any) {
+      setError(err.message || 'Something went wrong. Please try again.')
+      setStep('details')
+      setPayingWith(null)
+    }
   }
 
   return (
@@ -175,28 +230,98 @@ export default function BookingCalendar({ pricePerNight, cleaningFee, blockedDat
         </p>
       )}
 
-      {checkIn && checkOut && !rangeHasBlockedDate && nights > 0 && (
-        <div className="bg-gray-50 rounded-lg p-4 text-sm space-y-1">
+      {pricing && !rangeHasBlockedDate && (
+        <div className="bg-gray-50 rounded-lg p-4 text-sm space-y-1 mb-4">
           <div className="flex justify-between">
             <span>
-              £{pricePerNight} x {nights} night{nights > 1 ? 's' : ''}
+              £{pricing.pricePerNight} x {pricing.nights} night{pricing.nights > 1 ? 's' : ''}
             </span>
-            <span>£{nightsTotal.toFixed(2)}</span>
+            <span>£{pricing.nightsTotal.toFixed(2)}</span>
           </div>
           <div className="flex justify-between">
             <span>Cleaning fee</span>
-            <span>£{cleaningFee.toFixed(2)}</span>
+            <span>£{pricing.cleaningFee.toFixed(2)}</span>
           </div>
           <div className="flex justify-between">
-            <span>Platform fee (5%)</span>
-            <span>£{platformFee.toFixed(2)}</span>
+            <span>Service fee (5%)</span>
+            <span>£{pricing.guestServiceFee.toFixed(2)}</span>
           </div>
           <div className="flex justify-between font-semibold border-t pt-1 mt-1">
             <span>Total</span>
-            <span>£{total.toFixed(2)}</span>
+            <span>£{pricing.total.toFixed(2)}</span>
           </div>
         </div>
       )}
+
+      {canBook && step === 'pick-dates' && (
+        <button
+          type="button"
+          onClick={() => setStep('details')}
+          className="bg-blue-700 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-800"
+        >
+          Continue
+        </button>
+      )}
+
+      {canBook && (step === 'details' || step === 'redirecting') && (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Full name</label>
+            <input
+              type="text"
+              value={guestName}
+              onChange={(e) => setGuestName(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+              placeholder="Jane Smith"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input
+              type="email"
+              value={guestEmail}
+              onChange={(e) => setGuestEmail(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+              placeholder="jane@example.com"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Phone (optional)</label>
+            <input
+              type="tel"
+              value={guestPhone}
+              onChange={(e) => setGuestPhone(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+              placeholder="+44 7..."
+            />
+          </div>
+
+          {error && <p className="text-red-600 text-sm">{error}</p>}
+
+          <div className="flex flex-wrap gap-3 pt-1">
+            <button
+              type="button"
+              disabled={step === 'redirecting'}
+              onClick={() => startCheckout('stripe')}
+              className="bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-blue-800 disabled:opacity-50"
+            >
+              {step === 'redirecting' && payingWith === 'stripe' ? 'Redirecting…' : 'Pay with card'}
+            </button>
+            <button
+              type="button"
+              disabled={step === 'redirecting'}
+              onClick={() => startCheckout('paypal')}
+              className="bg-amber-400 text-blue-900 px-5 py-2.5 rounded-lg font-medium hover:bg-amber-300 disabled:opacity-50"
+            >
+              {step === 'redirecting' && payingWith === 'paypal' ? 'Redirecting…' : 'Pay with PayPal'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <p className="text-xs text-gray-400 mt-4">
+        The full address, check-in details, and access codes will be shared once your booking is confirmed.
+      </p>
     </div>
   )
 }
