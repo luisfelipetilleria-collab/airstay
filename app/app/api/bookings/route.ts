@@ -82,7 +82,8 @@ export async function POST(req: Request) {
     .select('id')
     .single()
 
-  if (insertError) {
+ if (insertError) {
+    console.error('Booking insert error:', insertError)
     return NextResponse.json({ error: 'Could not create booking. Please try again.' }, { status: 500 })
   }
 
