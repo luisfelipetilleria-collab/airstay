@@ -22,14 +22,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Webhook signature invalid: ${err.message}` }, { status: 400 })
   }
 
-  if (event.type === 'checkout.session.completed') {
+    if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session
     const bookingId = session.metadata?.bookingId
+    console.log('Webhook received:', JSON.stringify({ eventType: event.type, bookingId, sessionId: session.id }))
     if (bookingId) {
       const supabase = createAdminClient()
-      // Two steps: always record that money arrived, even in the rare case
-      // the second step (below) is rejected by the database.
-      await supabase
+      const { data: d1, error: e1 } = await supabase
         .from('bookings')
         .update({
           payment_status: 'paid',
@@ -37,23 +36,22 @@ export async function POST(req: Request) {
             typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id,
         })
         .eq('id', bookingId)
-
-      // This can fail if the dates got confirmed for someone else in the
-      // meantime (the database's overlap guard rejects it) — extremely
-      // unlikely given the 20-minute hold, but if it happens the booking is
-      // left paid-but-not-confirmed for a human to sort out (refund or
-      // rebook), instead of silently double-booking the listing.
-      const { error } = await supabase
+        .select()
+      console.log('Webhook payment_status update:', JSON.stringify({ bookingId, d1, e1 }))
+      const { data: d2, error } = await supabase
         .from('bookings')
         .update({ status: 'confirmed' })
         .eq('id', bookingId)
         .eq('status', 'pending_payment')
-
+        .select()
+      console.log('Webhook status update:', JSON.stringify({ bookingId, d2, error }))
       if (error) {
         console.error(`Booking ${bookingId} paid but could not be confirmed:`, error.message)
       }
+    } else {
+      console.log('Webhook: no bookingId in session metadata, skipping.')
     }
   }
 
-  return NextResponse.json({ received: true })
+return NextResponse.json({ received: true })
 }
