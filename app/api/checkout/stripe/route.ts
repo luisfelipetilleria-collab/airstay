@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSiteUrl } from '@/lib/site-url'
+import { nightsBetween } from '@/lib/pricing'
 
 export async function POST(req: Request) {
   const { bookingId } = await req.json().catch(() => ({}))
@@ -20,13 +21,16 @@ export async function POST(req: Request) {
 
   const { data: booking } = await supabase
     .from('bookings')
-    .select('id, listing_id, nights, total, status, guest_email')
+    .select('id, listing_id, check_in, check_out, total_price, status, guests(email)')
     .eq('id', bookingId)
     .single()
 
   if (!booking || booking.status !== 'pending_payment') {
     return NextResponse.json({ error: 'This booking is no longer available.' }, { status: 404 })
   }
+
+  const nights = nightsBetween(booking.check_in, booking.check_out)
+  const guestEmail = (booking as any).guests?.email as string | undefined
 
   const { data: listing } = await supabase
     .from('listings')
@@ -39,14 +43,14 @@ export async function POST(req: Request) {
 
   const session = await stripe.checkout.sessions.create({
     mode: 'payment',
-    customer_email: booking.guest_email,
+    customer_email: guestEmail,
     line_items: [
       {
         price_data: {
           currency: 'gbp',
-          unit_amount: Math.round(booking.total * 100),
+          unit_amount: Math.round(booking.total_price * 100),
           product_data: {
-            name: `${listing?.title ?? 'Airstay booking'} — ${booking.nights} night${booking.nights > 1 ? 's' : ''}`,
+            name: `${listing?.title ?? 'Airstay booking'} — ${nights} night${nights > 1 ? 's' : ''}`,
           },
         },
         quantity: 1,
