@@ -20,7 +20,7 @@ export async function POST(req: Request) {
 
   const { data: booking } = await supabase
     .from('bookings')
-    .select('id, listing_id, total, status')
+    .select('id, listing_id, total_price, status')
     .eq('id', bookingId)
     .single()
 
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     const accessToken = await getPayPalAccessToken()
     order = await createPayPalOrder({
       accessToken,
-      amount: booking.total,
+      amount: booking.total_price,
       description: listing?.title ?? 'Airstay booking',
       returnUrl: `${siteUrl}/api/checkout/paypal/return?bookingId=${booking.id}`,
       cancelUrl: `${siteUrl}/listing/${booking.listing_id}?booking=cancelled`,
