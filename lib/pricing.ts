@@ -1,38 +1,104 @@
-// Single source of truth for price math, used both for the on-page preview
-// and (again, authoritatively) on the server when a booking is created.
-// Never trust a price sent from the browser — always recompute it here from
-// the listing's real price_per_night / cleaning_fee before charging anyone.
+import { NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { computePricing, nightsBetween, GUEST_SERVICE_FEE_RATE } from '@/lib/pricing'
+import { getBlockedDateSet, rangeOverlapsBlocked } from '@/lib/availability'
+// Creates a "pending_payment" booking, after re-checking everything
+// server-side (never trust dates or prices sent from the browser). The
+// booking becomes real ("confirmed") only once a payment webhook/return
+// confirms money actually moved — see /api/webhooks/stripe and
+// /api/checkout/paypal/return.
+export async function POST(req: Request) {
+  const body = await req.json().catch(() => null)
+  const { listingId, checkIn, checkOut, guestName, guestEmail, guestPhone } = body || {}
+  if (!listingId || !checkIn || !checkOut || !guestName || !guestEmail) {
+    return NextResponse.json({ error: 'Missing required fields.' }, { status: 400 })
+  }
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/
+  if (!dateRe.test(checkIn) || !dateRe.test(checkOut) || checkOut <= checkIn) {
+    return NextResponse.json({ error: 'Invalid date range.' }, { status: 400 })
+  }
+  const today = new Date().toISOString().slice(0, 10)
+  if (checkIn < today) {
+    return NextResponse.json({ error: 'Check-in date is in the past.' }, { status: 400 })
+  }
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (!emailRe.test(guestEmail)) {
+    return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 })
+  }
+  const supabase = createAdminClient()
+  const { data: listing, error: listingError } = await supabase
+    .from('listings')
+    .select('id, price_per_night, cleaning_fee, active, blocked_dates')
+    .eq('id', listingId)
+    .single()
+  if (listingError || !listing || !listing.active) {
+    return NextResponse.json({ error: 'This listing is not available.' }, { status: 404 })
+  }
+  const { data: existingBookings, error: bookingsError } = await supabase
+    .from('bookings')
+    .select('check_in, check_out, status, created_at')
+    .eq('listing_id', listingId)
+    .in('status', ['pending_payment', 'confirmed'])
+  if (bookingsError) {
+    console.error('Availability check error:', bookingsError)
+    return NextResponse.json({ error: 'Could not check availability.' }, { status: 500 })
+  }
+  const blocked = getBlockedDateSet(listing.blocked_dates, existingBookings || [])
+  if (rangeOverlapsBlocked(checkIn, checkOut, blocked)) {
+    return NextResponse.json(
+      { error: 'Sorry, one or more of those nights just became unavailable. Please pick different dates.' },
+      { status: 409 }
+    )
+  }
+  const nights = nightsBetween(checkIn, checkOut)
+  const pricing = computePricing(listing.price_per_night, listing.cleaning_fee, nights)
+  const hostServiceFee = Math.round((pricing.nightsTotal + pricing.cleaningFee) * GUEST_SERVICE_FEE_RATE * 100) / 100
 
-export const GUEST_SERVICE_FEE_RATE = 0.05
+  // Bookings reference a guest via guest_id, so find or create that guest
+  // record first (matched by email) rather than storing contact info
+  // directly on the booking row.
+  const { data: existingGuest, error: guestLookupError } = await supabase
+    .from('guests')
+    .select('id')
+    .eq('email', guestEmail)
+    .maybeSingle()
+  if (guestLookupError) {
+    console.error('Guest lookup error:', guestLookupError)
+    return NextResponse.json({ error: 'Could not create booking. Please try again.' }, { status: 500 })
+  }
+  let guestId = existingGuest?.id
+  if (!guestId) {
+    const { data: newGuest, error: guestInsertError } = await supabase
+      .from('guests')
+      .insert({ name: guestName, email: guestEmail, phone: guestPhone || null })
+      .select('id')
+      .single()
+    if (guestInsertError) {
+      console.error('Guest insert error:', guestInsertError)
+      return NextResponse.json({ error: 'Could not create booking. Please try again.' }, { status: 500 })
+    }
+    guestId = newGuest.id
+  }
 
-function round2(n: number) {
-  return Math.round(n * 100) / 100
-}
-
-export function nightsBetween(checkIn: string, checkOut: string) {
-  const start = new Date(checkIn + 'T00:00:00Z')
-  const end = new Date(checkOut + 'T00:00:00Z')
-  return Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
-}
-
-export interface PriceBreakdown {
-  nights: number
-  pricePerNight: number
-  nightsTotal: number
-  cleaningFee: number
-  guestServiceFee: number
-  total: number
-}
-
-export function computePricing(
-  pricePerNight: number,
-  cleaningFee: number,
-  nights: number
-): PriceBreakdown {
-  const nightsTotal = round2(pricePerNight * nights)
-  const subtotal = nightsTotal + cleaningFee
-  const guestServiceFee = round2(subtotal * GUEST_SERVICE_FEE_RATE)
-  const total = round2(subtotal + guestServiceFee)
-
-  return { nights, pricePerNight, nightsTotal, cleaningFee, guestServiceFee, total }
+  const { data: booking, error: insertError } = await supabase
+    .from('bookings')
+    .insert({
+      listing_id: listingId,
+      guest_id: guestId,
+      check_in: checkIn,
+      check_out: checkOut,
+      nightly_total: pricing.nightsTotal,
+      cleaning_fee: pricing.cleaningFee,
+      guest_service_fee: pricing.guestServiceFee,
+      host_service_fee: hostServiceFee,
+      total_price: pricing.total,
+      status: 'pending_payment',
+    })
+    .select('id')
+    .single()
+  if (insertError) {
+    console.error('Booking insert error:', insertError)
+    return NextResponse.json({ error: 'Could not create booking. Please try again.' }, { status: 500 })
+  }
+  return NextResponse.json({ bookingId: booking.id, pricing })
 }
