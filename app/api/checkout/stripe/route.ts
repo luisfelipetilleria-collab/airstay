@@ -61,10 +61,12 @@ export async function POST(req: Request) {
     cancel_url: `${siteUrl}/listing/${booking.listing_id}?booking=cancelled`,
   })
 
-  await supabase
+   const { data: updateData, error: updateError } = await supabase
     .from('bookings')
     .update({ payment_method: 'stripe', stripe_checkout_session_id: session.id })
     .eq('id', booking.id)
+    .select()
+  console.log('Checkout session update result:', JSON.stringify({ bookingId: booking.id, updateData, updateError }))
 
   return NextResponse.json({ url: session.url })
 }
