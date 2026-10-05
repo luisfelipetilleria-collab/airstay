@@ -7,12 +7,23 @@ interface Props {
   listingId: string
   pricePerNight: number
   cleaningFee: number
+  extraGuestFee: number
+  maxGuests: number
   blockedDates: string[]
 }
 
 type Step = 'pick-dates' | 'details' | 'redirecting'
 
-export default function BookingCalendar({ listingId, pricePerNight, cleaningFee, blockedDates }: Props) {
+export default function BookingCalendar({
+  listingId,
+  pricePerNight,
+  cleaningFee,
+  extraGuestFee,
+  maxGuests,
+  blockedDates,
+}: Props) {
+  const guestLimit = Math.max(1, Number(maxGuests) || 1)
+  const [guests, setGuests] = useState(1)
   const [checkIn, setCheckIn] = useState<string | null>(null)
   const [checkOut, setCheckOut] = useState<string | null>(null)
   const [step, setStep] = useState<Step>('pick-dates')
@@ -91,7 +102,7 @@ export default function BookingCalendar({ listingId, pricePerNight, cleaningFee,
   }, [checkIn, checkOut, blockedSet])
 
   const nights = checkIn && checkOut ? nightsBetween(checkIn, checkOut) : 0
-  const pricing = nights > 0 ? computePricing(pricePerNight, cleaningFee, nights) : null
+  const pricing = nights > 0 ? computePricing(pricePerNight, cleaningFee, nights, guests, extraGuestFee) : null
   const canBook = Boolean(checkIn && checkOut && !rangeHasBlockedDate && nights > 0)
 
   function resetSelection() {
@@ -121,6 +132,7 @@ export default function BookingCalendar({ listingId, pricePerNight, cleaningFee,
           listingId,
           checkIn,
           checkOut,
+          guests,
           guestName: guestName.trim(),
           guestEmail: guestEmail.trim(),
           guestPhone: guestPhone.trim() || null,
@@ -224,6 +236,28 @@ export default function BookingCalendar({ listingId, pricePerNight, cleaningFee,
         )}
       </div>
 
+      <div className="mb-4 text-sm text-gray-700">
+        <label htmlFor="guests" className="font-medium mr-2">Guests</label>
+        <select
+          id="guests"
+          value={guests}
+          disabled={step === 'redirecting'}
+          onChange={(e) => setGuests(Number(e.target.value))}
+          className="border rounded-lg px-3 py-1.5 text-sm"
+        >
+          {Array.from({ length: guestLimit }, (_, i) => i + 1).map((n) => (
+            <option key={n} value={n}>
+              {n} guest{n > 1 ? 's' : ''}
+            </option>
+          ))}
+        </select>
+        {guestLimit > 1 && Number(extraGuestFee) > 0 && (
+          <span className="text-xs text-gray-500 ml-2">
+            £{pricePerNight} for 1 guest, +£{extraGuestFee} per extra guest per night
+          </span>
+        )}
+      </div>
+
       {checkIn && checkOut && rangeHasBlockedDate && (
         <p className="text-red-600 text-sm mb-4">
           One or more nights in this range aren&apos;t available. Please choose different dates.
@@ -235,6 +269,11 @@ export default function BookingCalendar({ listingId, pricePerNight, cleaningFee,
           <div className="flex justify-between">
             <span>
               £{pricing.pricePerNight} x {pricing.nights} night{pricing.nights > 1 ? 's' : ''}
+              {pricing.extraGuests > 0 && (
+                <span className="block text-xs text-gray-500">
+                  £{pricing.basePrice} + {pricing.extraGuests} extra guest{pricing.extraGuests > 1 ? 's' : ''} x £{pricing.extraGuestFee}
+                </span>
+              )}
             </span>
             <span>£{pricing.nightsTotal.toFixed(2)}</span>
           </div>
