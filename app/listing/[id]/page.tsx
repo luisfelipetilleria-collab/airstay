@@ -79,6 +79,14 @@ export default async function ListingPage({
       </div>
       <h1 className="text-2xl font-bold">{listing.title}</h1>
       <p className="text-gray-500 mb-1">{streetOnly}, {listing.postcode}</p>
+      <div className="flex items-center gap-2 mb-2 flex-wrap text-sm text-gray-600">
+        <span>Up to {listing.max_guests ?? 1} guest{(listing.max_guests ?? 1) > 1 ? 's' : ''}</span>
+        {listing.female_only && (
+          <span className="inline-flex items-center text-xs bg-pink-100 text-pink-800 px-2 py-0.5 rounded-full font-medium">
+            Female only
+          </span>
+        )}
+      </div>
 
       {host?.name && (
         <div className="flex items-center gap-2 mb-4">
@@ -99,6 +107,8 @@ export default async function ListingPage({
         listingId={listing.id}
         pricePerNight={listing.price_per_night}
         cleaningFee={listing.cleaning_fee}
+        extraGuestFee={listing.extra_guest_fee ?? 0}
+        maxGuests={listing.max_guests ?? 1}
         blockedDates={blockedDates}
       />
     </div>
