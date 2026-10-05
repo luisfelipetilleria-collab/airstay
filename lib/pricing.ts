@@ -13,7 +13,11 @@ export function nightsBetween(checkIn: string, checkOut: string): number {
 }
 
 export interface Pricing {
-  pricePerNight: number
+  pricePerNight: number // nightly rate for the whole party (base + extra guests)
+  basePrice: number // price for the first guest
+  guests: number
+  extraGuests: number
+  extraGuestFee: number // per extra guest, per night
   nights: number
   nightsTotal: number
   cleaningFee: number
@@ -21,13 +25,30 @@ export interface Pricing {
   total: number
 }
 
-export function computePricing(pricePerNight: number, cleaningFee: number, nights: number): Pricing {
+// The listing price covers 1 guest. Every guest from the 2nd onwards adds
+// the listing's extra_guest_fee per night.
+export function computePricing(
+  basePrice: number,
+  cleaningFee: number,
+  nights: number,
+  guests: number = 1,
+  extraGuestFee: number = 0
+): Pricing {
+  const base = Number(basePrice) || 0
+  const extraFee = Number(extraGuestFee) || 0
+  const partySize = Math.max(1, Math.floor(Number(guests) || 1))
+  const extraGuests = partySize - 1
+  const pricePerNight = Math.round((base + extraGuests * extraFee) * 100) / 100
   const nightsTotal = Math.round(pricePerNight * nights * 100) / 100
-  const fee = Math.round(cleaningFee * 100) / 100
+  const fee = Math.round((Number(cleaningFee) || 0) * 100) / 100
   const guestServiceFee = Math.round((nightsTotal + fee) * GUEST_SERVICE_FEE_RATE * 100) / 100
   const total = Math.round((nightsTotal + fee + guestServiceFee) * 100) / 100
   return {
     pricePerNight,
+    basePrice: base,
+    guests: partySize,
+    extraGuests,
+    extraGuestFee: extraFee,
     nights,
     nightsTotal,
     cleaningFee: fee,
