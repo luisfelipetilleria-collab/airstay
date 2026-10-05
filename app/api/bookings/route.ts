@@ -10,6 +10,7 @@ import { getBlockedDateSet, rangeOverlapsBlocked } from '@/lib/availability'
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null)
   const { listingId, checkIn, checkOut, guestName, guestEmail, guestPhone } = body || {}
+  const guests = Math.floor(Number(body?.guests ?? 1))
   if (!listingId || !checkIn || !checkOut || !guestName || !guestEmail) {
     return NextResponse.json({ error: 'Missing required fields.' }, { status: 400 })
   }
@@ -28,11 +29,18 @@ export async function POST(req: Request) {
   const supabase = createAdminClient()
   const { data: listing, error: listingError } = await supabase
     .from('listings')
-    .select('id, price_per_night, cleaning_fee, active, blocked_dates')
+    .select('id, price_per_night, cleaning_fee, extra_guest_fee, max_guests, active, blocked_dates')
     .eq('id', listingId)
     .single()
   if (listingError || !listing || !listing.active) {
     return NextResponse.json({ error: 'This listing is not available.' }, { status: 404 })
+  }
+  const maxGuests = Number(listing.max_guests) || 1
+  if (!Number.isFinite(guests) || guests < 1 || guests > maxGuests) {
+    return NextResponse.json(
+      { error: `This listing allows up to ${maxGuests} guest${maxGuests > 1 ? 's' : ''}.` },
+      { status: 400 }
+    )
   }
   const { data: existingBookings, error: bookingsError } = await supabase
     .from('bookings')
@@ -51,7 +59,7 @@ export async function POST(req: Request) {
     )
   }
   const nights = nightsBetween(checkIn, checkOut)
-  const pricing = computePricing(listing.price_per_night, listing.cleaning_fee, nights)
+  const pricing = computePricing(listing.price_per_night, listing.cleaning_fee, nights, guests, listing.extra_guest_fee)
   const hostServiceFee = Math.round((pricing.nightsTotal + pricing.cleaningFee) * GUEST_SERVICE_FEE_RATE * 100) / 100
 
   // Bookings reference a guest via guest_id, so find or create that guest
@@ -87,6 +95,7 @@ export async function POST(req: Request) {
       guest_id: guestId,
       check_in: checkIn,
       check_out: checkOut,
+      guests,
       nightly_total: pricing.nightsTotal,
       cleaning_fee: pricing.cleaningFee,
       guest_service_fee: pricing.guestServiceFee,
