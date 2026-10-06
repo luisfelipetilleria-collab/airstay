@@ -335,6 +335,11 @@ export default function BookingCalendar({
             />
           </div>
 
+          <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2 text-sm">
+            <strong>Non-refundable:</strong> once paid, this booking can&apos;t be cancelled for a refund.
+            Please double-check your dates and number of guests.
+          </div>
+
           {error && <p className="text-red-600 text-sm">{error}</p>}
 
           <div className="flex flex-wrap gap-3 pt-1">
@@ -355,6 +360,12 @@ export default function BookingCalendar({
               {step === 'redirecting' && payingWith === 'paypal' ? 'Redirecting…' : 'Pay with PayPal'}
             </button>
           </div>
+          <p className="text-xs text-gray-500">
+            By paying, you agree to Airstay&apos;s{' '}
+            <a href="/terms" target="_blank" className="underline">Terms</a>,{' '}
+            <a href="/cancellation-policy" target="_blank" className="underline">Cancellation Policy</a> and{' '}
+            <a href="/privacy" target="_blank" className="underline">Privacy Policy</a>.
+          </p>
         </div>
       )}
 
