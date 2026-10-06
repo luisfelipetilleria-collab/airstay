@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sendBookingConfirmationEmails } from '@/lib/booking-emails'
 
 // Stripe dashboard → Developers → Webhooks → Add endpoint:
 //   URL:    https://airstay.uk/api/webhooks/stripe   (or your Vercel URL)
@@ -47,6 +48,10 @@ export async function POST(req: Request) {
       console.log('Webhook status update:', JSON.stringify({ bookingId, d2, error }))
       if (error) {
         console.error(`Booking ${bookingId} paid but could not be confirmed:`, error.message)
+      } else if (d2 && d2.length > 0) {
+        // Only the request that actually switched the booking to "confirmed"
+        // sends emails, so a repeated Stripe webhook never sends duplicates.
+        await sendBookingConfirmationEmails(bookingId)
       }
     } else {
       console.log('Webhook: no bookingId in session metadata, skipping.')
