@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSiteUrl } from '@/lib/site-url'
 import { capturePayPalOrder, getPayPalAccessToken } from '@/lib/paypal'
+import { sendBookingConfirmationEmails } from '@/lib/booking-emails'
 
 // PayPal redirects the guest's browser back here (GET) after they approve
 // payment on paypal.com. `token` is the PayPal order id.
@@ -35,14 +36,18 @@ export async function GET(req: Request) {
         .update({ payment_status: 'paid' })
         .eq('id', booking.id)
 
-      const { error } = await supabase
+      const { data: confirmed, error } = await supabase
         .from('bookings')
         .update({ status: 'confirmed' })
         .eq('id', booking.id)
         .eq('status', 'pending_payment')
+        .select('id')
 
       if (error) {
         console.error(`Booking ${booking.id} paid but could not be confirmed:`, error.message)
+      } else if (confirmed && confirmed.length > 0) {
+        // Only send when this request is the one that confirmed the booking.
+        await sendBookingConfirmationEmails(booking.id)
       }
 
       return NextResponse.redirect(`${siteUrl}/listing/${booking.listing_id}?booking=success`)
